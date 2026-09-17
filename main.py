@@ -55,6 +55,32 @@ def set_log_channel(guild_id, log_type, channel_id):
     save_settings(data)
 
 #==============================================================
+# 🌐 GIỮ PORT CHO RENDER (server HTTP giả - bắt buộc khi deploy Web Service)
+#==============================================================
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, *args):
+        pass  # tắt log rác
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 10000))  # Render tự cấp biến PORT
+    server = HTTPServer(("0.0.0.0", port), KeepAliveHandler)
+    print(f"🌐 Keep-alive server chạy ở port {port}")
+    server.serve_forever()
+
+threading.Thread(target=run_http_server, daemon=True).start()
+
+#================== CHẠY BOT ==================
+bot.run(TOKEN)
+
+#==============================================================
 # 🛠️ HÀM HỖ TRỢ
 #==============================================================
 URL_REGEX = re.compile(r"(https?://[^\s]+)")
