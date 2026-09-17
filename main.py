@@ -1,29 +1,30 @@
 #==============================================================
-#          🤖 DISCORD LOG BOT - PYTHON FINAL v5
-#   ✅ Fix "Ứng dụng không phản hồi" (sync lệnh NGAY)
-#   ✅ Menu dropdown chọn log + chọn kênh
-#   ✅ FULL tin nhắn / ảnh / gif / link / file / role
-#   ✅ /help bảng lệnh đầy đủ
+#          🤖 DISCORD LOG BOT - PYTHON FINAL v6
+#   ✅ Đã XÓA log thành viên vào/ra (welcome bot lo rồi)
+#   ✅ Fix bot.run sai vị trí + thiếu EMBED_COLOR
+#   ✅ Menu dropdown + FULL tin nhắn/ảnh/gif/link/file
 #==============================================================
 import discord
 from discord import app_commands
 from discord.ext import commands
 import json, os, re, traceback
-import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 #==============================================================
 # ⚙️ CONFIG — Token lấy từ biến môi trường (KHÔNG ghi trong code)
 #==============================================================
-TOKEN = os.environ.get("DISCORD_TOKEN")   # 👈 đọc từ biến môi trường
-GUILD_ID = int(os.environ.get("GUILD_ID", "0"))  # cũng đọc từ biến môi trường (tùy chọn)
+TOKEN = os.environ.get("DISCORD_TOKEN")
+GUILD_ID = int(os.environ.get("GUILD_ID", "0"))
+EMBED_COLOR = 0x000000   # Màu đen
+THUMBNAIL = "https://i.pinimg.com/736x/e5/0f/53/e50f5361e265e7d22731829b7bc5d7a0.jpg"
 
 if not TOKEN:
     raise SystemExit(
         "❌ Chưa có token!\n"
         "   Đặt biến môi trường DISCORD_TOKEN trước khi chạy:\n"
-        "   Windows:  set DISCORD_TOKEN=dán_token_here  (CMD tạm thời)\n"
-        "             setx DISCORD_TOKEN \"dán_token_here\"  (vĩnh viễn)\n"
-        "   PowerShell: $env:DISCORD_TOKEN=\"dán_token_here\"\n"
+        "   Windows:  setx DISCORD_TOKEN \"dán_token_here\"\n"
+        "   Render:   Environment → Add Environment Variable"
     )
 
 #==============================================================
@@ -53,32 +54,6 @@ def set_log_channel(guild_id, log_type, channel_id):
     data = load_settings()
     data.setdefault(str(guild_id), {})[log_type] = str(channel_id)
     save_settings(data)
-
-#==============================================================
-# 🌐 GIỮ PORT CHO RENDER (server HTTP giả - bắt buộc khi deploy Web Service)
-#==============================================================
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class KeepAliveHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-
-    def log_message(self, *args):
-        pass  # tắt log rác
-
-def run_http_server():
-    port = int(os.environ.get("PORT", 10000))  # Render tự cấp biến PORT
-    server = HTTPServer(("0.0.0.0", port), KeepAliveHandler)
-    print(f"🌐 Keep-alive server chạy ở port {port}")
-    server.serve_forever()
-
-threading.Thread(target=run_http_server, daemon=True).start()
-
-#================== CHẠY BOT ==================
-bot.run(TOKEN)
 
 #==============================================================
 # 🛠️ HÀM HỖ TRỢ
@@ -322,54 +297,9 @@ async def on_message_edit(before, after):
         traceback.print_exc()
 
 #==============================================================
-# 📥📤 MEMBER VÀO / RA
+# ❌ ĐÃ XÓA: log thành viên vào (welcome bot lo rồi)
+# ❌ ĐÃ XÓA: log thành viên rời (goodbye bot lo rồi)
 #==============================================================
-@bot.event
-async def on_member_join(member):
-    try:
-        log_channel = get_log_channel(member.guild, "memberLog")
-        if not log_channel:
-            return
-        e = base_embed("📥 THÀNH VIÊN MỚI", image_url=member.display_avatar.url)
-        e.set_author(name=f"Member Join • {member}", icon_url=member.display_avatar.url)
-        account_age = (discord.utils.utcnow() - member.created_at).days
-        e.description = (user_info(member) +
-                         f"> ⏰ **Vào lúc:** {now_r()}\n\n"
-                         f"> 📅 Tạo tài khoản: <t:{int(member.created_at.timestamp())}:R>\n"
-                         f"> 🕐 Tuổi tài khoản: `{account_age} ngày`\n"
-                         f"> 🆔 User ID: `{member.id}`\n"
-                         f"> 👥 Thành viên thứ: `{member.guild.member_count}`")
-        await log_channel.send(embed=e)
-    except Exception:
-        print("❌ LỖI on_member_join:")
-        traceback.print_exc()
-
-@bot.event
-async def on_member_remove(member):
-    try:
-        log_channel = get_log_channel(member.guild, "memberLog")
-        if not log_channel:
-            return
-        days = str((discord.utils.utcnow() - member.joined_at).days) if member.joined_at else "Không rõ"
-        roles = member.roles[1:]
-        roles_text = " ".join(r.mention for r in roles) if roles else "Không có"
-        base_desc = (user_info(member) +
-                     f"> ⏰ **Rời lúc:** {now_r()}\n\n"
-                     f"> 📅 Đã ở server: `{days} ngày`\n"
-                     f"> 🆔 User ID: `{member.id}`\n"
-                     f"> 🎭 **Tổng số role:** `{len(roles)}`\n"
-                     f"> 👥 Còn lại: `{member.guild.member_count}` thành viên\n\n"
-                     f"**Danh sách FULL role:**\n{roles_text}")
-        parts = chunk(base_desc, 4000)
-        for idx, part in enumerate(parts):
-            e2 = base_embed("📤 THÀNH VIÊN RỜI ĐI" if idx == 0 else f"📤 ROLES (phần {idx+1})",
-                            image_url=member.display_avatar.url if idx == 0 else None)
-            e2.set_author(name=f"Member Leave • {member}", icon_url=member.display_avatar.url)
-            e2.description = part
-            await log_channel.send(embed=e2)
-    except Exception:
-        print("❌ LỖI on_member_remove:")
-        traceback.print_exc()
 
 #==============================================================
 # 🔨 BAN / UNBAN
@@ -493,7 +423,7 @@ async def on_guild_role_delete(role):
         traceback.print_exc()
 
 #==============================================================
-# ⌨️ MENU /log — FIX: defer ngay + bắt lỗi đầy đủ
+# ⌨️ MENU /log — 4 lựa chọn (đã bỏ "Log Thành viên")
 #==============================================================
 class ChannelPick(discord.ui.ChannelSelect):
     def __init__(self, log_type, label):
@@ -505,7 +435,6 @@ class ChannelPick(discord.ui.ChannelSelect):
     async def callback(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(ephemeral=True)
-            # ✅ FIX: lấy kênh THẬT từ guild (AppCommandChannel không có permissions_for)
             channel = interaction.guild.get_channel(self.values[0].id)
             if channel is None:
                 await interaction.followup.send("❌ Không tìm thấy kênh này!", ephemeral=True)
@@ -525,24 +454,7 @@ class ChannelPick(discord.ui.ChannelSelect):
         except Exception:
             traceback.print_exc()
             try:
-                await interaction.followup.send("❌ Có lỗi, xem CMD để biết chi tiết!", ephemeral=True)
-            except:
-                pass
-            if not (perms.send_messages and perms.embed_links):
-                await interaction.followup.send(
-                    f"❌ Bot thiếu quyền **Gửi tin nhắn / Nhúng liên kết** trong {channel.mention}!",
-                    ephemeral=True)
-                return
-            set_log_channel(interaction.guild_id, self.log_type, channel.id)
-            e = discord.Embed(title="✅ CÀI ĐẶT THÀNH CÔNG", color=EMBED_COLOR)
-            e.description = (f"> 📋 **Loại log:** `{self.label}`\n"
-                             f"> 📍 **Kênh:** {channel.mention} `#{channel.name}`\n"
-                             f"> 👤 **Cài bởi:** {interaction.user.mention}")
-            await interaction.followup.send(embed=e, ephemeral=True)
-        except Exception:
-            traceback.print_exc()
-            try:
-                await interaction.followup.send("❌ Có lỗi, xem CMD để biết chi tiết!", ephemeral=True)
+                await interaction.followup.send("❌ Có lỗi, xem log để biết chi tiết!", ephemeral=True)
             except:
                 pass
 
@@ -555,8 +467,6 @@ class LogMenuView(discord.ui.View):
         options=[
             discord.SelectOption(label="Log Tin nhắn", value="messageLog", emoji="💬",
                                  description="Chat • Ảnh • GIF • Link • File • Embed"),
-            discord.SelectOption(label="Log Thành viên", value="memberLog", emoji="👥",
-                                 description="Vào / Ra server"),
             discord.SelectOption(label="Log Server", value="serverLog", emoji="🖥️",
                                  description="Ban • Unban • Kênh • Role"),
             discord.SelectOption(label="Log Voice", value="voiceLog", emoji="🎙️",
@@ -567,7 +477,7 @@ class LogMenuView(discord.ui.View):
     )
     async def select_menu(self, interaction: discord.Interaction, select: discord.ui.Select):
         try:
-            await interaction.response.defer(ephemeral=True)  # phản hồi NGAY
+            await interaction.response.defer(ephemeral=True)
             if not interaction.user.guild_permissions.administrator:
                 await interaction.followup.send("❌ Chỉ admin mới dùng được!", ephemeral=True)
                 return
@@ -583,14 +493,12 @@ class LogMenuView(discord.ui.View):
                     return f"{ch.mention} `#{ch.name}`" if ch else "`❌ Kênh không tồn tại`"
                 e = discord.Embed(title="⚙️ CÀI ĐẶT LOG SERVER", color=EMBED_COLOR)
                 e.description = (f"> 💬 **Tin nhắn:** {get_ch('messageLog')}\n"
-                                 f"> 👥 **Thành viên:** {get_ch('memberLog')}\n"
                                  f"> 🖥️ **Server:** {get_ch('serverLog')}\n"
                                  f"> 🎙️ **Voice:** {get_ch('voiceLog')}")
                 await interaction.followup.send(embed=e, ephemeral=True)
                 return
 
-            labels = {"messageLog": "TIN NHẮN", "memberLog": "THÀNH VIÊN",
-                      "serverLog": "SERVER", "voiceLog": "VOICE"}
+            labels = {"messageLog": "TIN NHẮN", "serverLog": "SERVER", "voiceLog": "VOICE"}
             view = discord.ui.View(timeout=120)
             view.add_item(ChannelPick(choice, labels[choice]))
             await interaction.followup.send(
@@ -599,7 +507,7 @@ class LogMenuView(discord.ui.View):
         except Exception:
             traceback.print_exc()
             try:
-                await interaction.followup.send("❌ Có lỗi, xem CMD để biết chi tiết!", ephemeral=True)
+                await interaction.followup.send("❌ Có lỗi, xem log để biết chi tiết!", ephemeral=True)
             except:
                 pass
 
@@ -631,8 +539,6 @@ async def help_command(interaction: discord.Interaction):
             "> 💬 Chat (FULL) • 🖼️ Ảnh (TO) • 🎬 GIF (TO)\n"
             "> 🔗 Link (FULL) • 📁 File • 📋 Embed\n"
             "> 🗑️ Xóa tin • ✏️ Sửa tin"), inline=False)
-        e.add_field(name="👥 LOG THÀNH VIÊN", value=(
-            "> 📥 Vào server • 📤 Rời server (FULL role)"), inline=False)
         e.add_field(name="🖥️ LOG SERVER", value=(
             "> 🔨 Ban • 🔓 Unban\n"
             "> 📢 Tạo kênh • 🗑️ Xóa kênh\n"
@@ -655,7 +561,7 @@ async def ping(interaction: discord.Interaction):
         traceback.print_exc()
 
 #==============================================================
-# ✅ on_ready — SYNC LỆNH NGAY VÀO SERVER (fix không phản hồi)
+# ✅ on_ready — SYNC LỆNH
 #==============================================================
 @bot.event
 async def on_ready():
@@ -667,17 +573,37 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="📝 Log hệ thống"),
         status=discord.Status.online)
     try:
-        if GUILD_ID:  # 👈 Có ID server → sync NGAY (2-3 giây là có lệnh)
+        if GUILD_ID:
             guild = discord.Object(id=GUILD_ID)
             bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
             print(f"✅ Sync NGAY {len(synced)} lệnh vào server {GUILD_ID}")
-        else:  # Không có → sync global (chờ 1 tiếng, không khuyên dùng)
+        else:
             synced = await bot.tree.sync()
             print(f"✅ Sync global {len(synced)} lệnh (chờ vài phút tới 1 tiếng)")
     except Exception:
         print("❌ LỖI SYNC:")
         traceback.print_exc()
 
-#================== CHẠY BOT ==================
+#==============================================================
+# 🌐 GIỮ PORT CHO RENDER (HTTP server giả — chạy ngầm)
+#==============================================================
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, *args):
+        pass
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), KeepAliveHandler)
+    print(f"🌐 Keep-alive server chạy ở port {port}")
+    server.serve_forever()
+
+threading.Thread(target=run_http_server, daemon=True).start()
+
+#================== CHẠY BOT (DUY NHẤT — ở cuối file) ==================
 bot.run(TOKEN)
